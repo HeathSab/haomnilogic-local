@@ -1,3 +1,14 @@
+"""Sensor platform for OmniLogic Local integration.
+
+This module provides sensor entities for:
+- Air temperature sensors
+- Water temperature sensors
+- Solar temperature sensors
+- Filter/pump power consumption
+- Chlorinator salt levels
+- CSAD pH and ORP readings
+"""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -5,14 +16,15 @@ from decimal import Decimal
 import logging
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
 
-from pyomnilogic_local.omnitypes import ChlorinatorDispenserType, CSADType, FilterState, HeaterType, OmniType, SensorType, SensorUnits
+from pyomnilogic_local.omnitypes import ChlorinatorDispenserType, CSADType, FilterState, HeaterType, OmniType, SensorType
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION, UnitOfPower, UnitOfTemperature
+from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION, UnitOfPower
 from homeassistant.helpers.typing import StateType
 
 from .const import BACKYARD_SYSTEM_ID, DOMAIN, KEY_COORDINATOR
 from .entity import OmniLogicEntity
+from .helpers.temperature import get_unit_from_sensor, validate_temperature
 from .types.entity_index import (
     EntityIndexBackyard,
     EntityIndexBodyOfWater,
@@ -35,7 +47,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+    """Set up the sensor platform."""
 
     coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
 
@@ -146,14 +158,11 @@ T = TypeVar("T", EntityIndexBackyard, EntityIndexBodyOfWater, EntityIndexHeaterE
 
 
 class OmniLogicTemperatureSensorEntity(OmniLogicEntity[EntityIndexSensor], SensorEntity, Generic[T]):
-    """An entity using CoordinatorEntity.
+    """Base class for OmniLogic temperature sensors.
 
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
+    Temperature sensors read their values from an associated device
+    (backyard, body of water, or heater equipment) and use the
+    sensor's own configuration to determine the temperature unit.
     """
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -161,66 +170,79 @@ class OmniLogicTemperatureSensorEntity(OmniLogicEntity[EntityIndexSensor], Senso
     _sensed_system_id: int | None = None
 
     def __init__(self, coordinator: OmniLogicCoordinator, context: int, sensed_type: OmniType) -> None:
-        """Pass coordinator to CoordinatorEntity."""
+        """Initialize the temperature sensor.
+
+        Args:
+            coordinator: The data update coordinator.
+            context: The system ID of this sensor.
+            sensed_type: The OmniType of the device this sensor reads from.
+        """
         super().__init__(coordinator, context)
         self.sensed_type = sensed_type
 
     @property
     def sensed_data(self) -> T:
+        """Get the data for the device this sensor reads from."""
         return cast(T, self.coordinator.data[self.sensed_system_id])
 
     @property
     def sensed_system_id(self) -> int:
+        """Get the system ID of the device this sensor reads from."""
         if self._sensed_system_id is not None:
             return self._sensed_system_id
         raise NotImplementedError
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        match self.data.msp_config.units:
-            case SensorUnits.FAHRENHEIT:
-                return UnitOfTemperature.FAHRENHEIT
-            case SensorUnits.CELSIUS:
-                return UnitOfTemperature.CELSIUS
-            case _:
-                return None
+        """Get the temperature unit from the sensor's configuration."""
+        return get_unit_from_sensor(self.data.msp_config.units)
 
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
+        """Get the current temperature value."""
         raise NotImplementedError
 
 
 class OmniLogicAirTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[EntityIndexBackyard]):
+    """Air temperature sensor entity."""
+
     def __init__(self, coordinator: OmniLogicCoordinator, context: int) -> None:
+        """Initialize the air temperature sensor."""
         super().__init__(coordinator, context, OmniType.BACKYARD)
         self._sensed_system_id = BACKYARD_SYSTEM_ID
 
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
-        temp = self.sensed_data.telemetry.air_temp
-        return temp if temp not in [-1, 255, 65535] else None
+        """Get the current air temperature."""
+        return validate_temperature(self.sensed_data.telemetry.air_temp)
 
 
 class OmniLogicWaterTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[EntityIndexBodyOfWater]):
+    """Water temperature sensor entity."""
+
     def __init__(self, coordinator: OmniLogicCoordinator, context: int) -> None:
+        """Initialize the water temperature sensor."""
         super().__init__(coordinator, context, OmniType.BOW)
         self._sensed_system_id = self.bow_id
 
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
-        temp = self.sensed_data.telemetry.water_temp
-        return temp if temp not in [-1, 255, 65535] else None
+        """Get the current water temperature."""
+        return validate_temperature(self.sensed_data.telemetry.water_temp)
 
 
 class OmniLogicSolarTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[EntityIndexHeaterEquip]):
+    """Solar heater temperature sensor entity."""
+
     def __init__(self, coordinator: OmniLogicCoordinator, context: int, sensed_system_id: int) -> None:
+        """Initialize the solar temperature sensor."""
         super().__init__(coordinator, context, OmniType.HEATER_EQUIP)
         self._sensed_system_id = sensed_system_id
 
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
-        temp = self.sensed_data.telemetry.temp
-        return temp if temp not in [-1, 255, 65535] else None
+        """Get the current solar heater temperature."""
+        return validate_temperature(self.sensed_data.telemetry.temp)
 
 
 class OmniLogicFilterEnergySensorEntity(OmniLogicEntity[EntityIndexFilter], SensorEntity):

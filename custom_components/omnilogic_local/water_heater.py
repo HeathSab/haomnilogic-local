@@ -1,3 +1,19 @@
+"""Water heater platform for OmniLogic Local integration.
+
+This module provides water heater entities for controlling pool/spa heaters.
+
+IMPORTANT: Temperature Unit Handling
+------------------------------------
+The OmniLogic API always returns heater temperatures in Fahrenheit,
+regardless of the system's unit configuration. This is a documented
+device behavior, not a bug. The integration correctly reports Fahrenheit
+as the native unit, and Home Assistant will automatically convert for
+display based on the user's preferences.
+
+See: https://github.com/cryptk/haomnilogic-local/issues/96
+See: https://github.com/cryptk/haomnilogic-local/issues/127
+"""
+
 from __future__ import annotations
 
 import logging
@@ -11,6 +27,7 @@ from homeassistant.const import ATTR_TEMPERATURE, STATE_OFF, STATE_ON, UnitOfTem
 
 from .const import DOMAIN, KEY_COORDINATOR
 from .entity import OmniLogicEntity
+from .helpers.temperature import validate_temperature
 from .types.entity_index import EntityIndexHeater, EntityIndexHeaterEquip
 from .utils import get_entities_of_hass_type
 
@@ -53,24 +70,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class OmniLogicWaterHeaterEntity(OmniLogicEntity[EntityIndexHeater], WaterHeaterEntity):
-    """An entity using CoordinatorEntity.
+    """Water heater entity for OmniLogic pool/spa heaters.
 
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
+    This entity controls the virtual heater, which manages the actual
+    heater equipment (gas, electric, heat pump, or solar).
 
+    Temperature Unit Note:
+        The OmniLogic API always returns heater temperatures in Fahrenheit,
+        regardless of the system's configured units. This is documented
+        device behavior. Home Assistant automatically converts the display
+        based on user preferences.
+
+        See: https://github.com/cryptk/haomnilogic-local/issues/96
     """
 
+    # OmniLogic API always returns heater temps in Fahrenheit - this is device behavior
+    _attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
     _attr_supported_features = (
-        WaterHeaterEntityFeature.TARGET_TEMPERATURE | WaterHeaterEntityFeature.OPERATION_MODE | WaterHeaterEntityFeature.ON_OFF
+        WaterHeaterEntityFeature.TARGET_TEMPERATURE
+        | WaterHeaterEntityFeature.OPERATION_MODE
+        | WaterHeaterEntityFeature.ON_OFF
     )
     _attr_operation_list = [STATE_ON, STATE_OFF]
     _attr_name = "Heater"
 
     def __init__(self, coordinator: OmniLogicCoordinator, context: int, heater_equipment_ids: list[int]) -> None:
-        """Pass coordinator to CoordinatorEntity."""
+        """Initialize the water heater entity.
+
+        Args:
+            coordinator: The data update coordinator.
+            context: The system ID of this virtual heater.
+            heater_equipment_ids: List of system IDs for associated heater equipment.
+        """
         super().__init__(
             coordinator,
             context=context,
@@ -79,39 +110,47 @@ class OmniLogicWaterHeaterEntity(OmniLogicEntity[EntityIndexHeater], WaterHeater
 
     @property
     def temperature_unit(self) -> str:
-        # Heaters always return their values in Fahrenheit, no matter what units the system is set to
-        # https://github.com/cryptk/haomnilogic-local/issues/96
-        return UnitOfTemperature.FAHRENHEIT
+        """Return the temperature unit (always Fahrenheit for OmniLogic heaters)."""
+        return self._attr_temperature_unit
 
     @property
     def min_temp(self) -> float:
+        """Return the minimum temperature setpoint."""
         return self.data.msp_config.min_temp
 
     @property
     def max_temp(self) -> float:
+        """Return the maximum temperature setpoint."""
         return self.data.msp_config.max_temp
 
     @property
     def target_temperature(self) -> float | None:
+        """Return the current target temperature."""
         return self.data.telemetry.current_set_point
 
     @property
     def current_temperature(self) -> float | None:
-        current_temp = cast(TelemetryBoW, self.get_telemetry_by_systemid(self.bow_id)).water_temp
-        return current_temp if current_temp != -1 else None
+        """Return the current water temperature from the body of water."""
+        bow_telemetry = self.get_telemetry_by_systemid(self.bow_id)
+        if bow_telemetry is None:
+            return None
+        return validate_temperature(cast(TelemetryBoW, bow_telemetry).water_temp)
 
     @property
     def current_operation(self) -> str:
+        """Return the current operation mode (on/off)."""
         return str(STATE_ON) if self.data.telemetry.enabled else str(STATE_OFF)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Set the target temperature."""
+        temperature = int(kwargs[ATTR_TEMPERATURE])
         await self.coordinator.omni_api.async_set_heater(
             self.bow_id,
             self.system_id,
-            int(kwargs[ATTR_TEMPERATURE]),
+            temperature,
             unit=self.temperature_unit,
         )
-        self.set_telemetry({"current_set_point": int(kwargs[ATTR_TEMPERATURE])})
+        self.set_telemetry({"current_set_point": temperature})
 
     async def async_set_operation_mode(self, operation_mode: Literal["on", "off"]) -> None:
         match operation_mode:

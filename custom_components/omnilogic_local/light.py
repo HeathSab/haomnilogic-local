@@ -1,3 +1,9 @@
+"""Light platform for OmniLogic Local integration.
+
+This module provides light entities for ColorLogic pool lights,
+including brightness control and light show effects.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -62,15 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class OmniLogicLightEntity(OmniLogicEntity[EntityIndexColorLogicLight], LightEntity):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """ColorLogic pool light with brightness and effect support."""
 
     _attr_effect_list = list(ColorLogicShow.__members__)
     _attr_supported_features = LightEntityFeature.EFFECT

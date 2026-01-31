@@ -1,3 +1,13 @@
+"""Switch platform for OmniLogic Local integration.
+
+This module provides switch entities for:
+- Relay controls (valve actuators, high voltage relays)
+- Filter pumps
+- Auxiliary pumps
+- Chlorinators
+- Pool/spa spillover
+"""
+
 from __future__ import annotations
 
 import logging
@@ -103,15 +113,7 @@ T = TypeVar("T", EntityIndexRelay, EntityIndexFilter, EntityIndexPump, EntityInd
 
 
 class OmniLogicSwitchEntity(OmniLogicEntity[T], SwitchEntity):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Base class for OmniLogic switch entities."""
 
     telem_value_state: ValveActuatorState | RelayState | PumpState | FilterState
 
@@ -133,15 +135,7 @@ class OmniLogicSwitchEntity(OmniLogicEntity[T], SwitchEntity):
 
 
 class OmniLogicRelayValveActuatorSwitchEntity(OmniLogicSwitchEntity[EntityIndexValveActuator]):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Switch for valve actuator relays (waterfalls, fountains, etc.)."""
 
     telem_value_state = ValveActuatorState
 
@@ -173,15 +167,7 @@ class OmniLogicRelayValveActuatorSwitchEntity(OmniLogicSwitchEntity[EntityIndexV
 
 
 class OmniLogicRelayHighVoltageSwitchEntity(OmniLogicSwitchEntity[EntityIndexRelay]):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Switch for high voltage relay outputs."""
 
     telem_value_state = RelayState
 
@@ -191,15 +177,7 @@ class OmniLogicRelayHighVoltageSwitchEntity(OmniLogicSwitchEntity[EntityIndexRel
 
 
 class OmniLogicPumpSwitchEntity(OmniLogicSwitchEntity[EntityIndexPump]):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Switch for auxiliary pumps."""
 
     telem_value_state = PumpState
 
@@ -221,15 +199,7 @@ class OmniLogicPumpSwitchEntity(OmniLogicSwitchEntity[EntityIndexPump]):
 
 
 class OmniLogicFilterSwitchEntity(OmniLogicSwitchEntity[EntityIndexFilter]):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Switch for filter pumps with extended state tracking."""
 
     telem_value_state = FilterState
 
@@ -269,15 +239,7 @@ class OmniLogicFilterSwitchEntity(OmniLogicSwitchEntity[EntityIndexFilter]):
 
 
 class OmniLogicChlorinatorSwitchEntity(OmniLogicEntity[EntityIndexChlorinator], SwitchEntity):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Switch to enable/disable the chlorinator."""
 
     telem_value_state = RelayState
 
@@ -303,15 +265,7 @@ class OmniLogicChlorinatorSwitchEntity(OmniLogicEntity[EntityIndexChlorinator], 
 
 
 class OmniLogicSpilloverSwitchEntity(OmniLogicEntity[EntityIndexBodyOfWater], SwitchEntity):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Switch to control pool spillover into the spa."""
 
     _attr_name = "Spillover"
 

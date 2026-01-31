@@ -1,3 +1,10 @@
+"""Button platform for OmniLogic Local integration.
+
+This module provides button entities for:
+- Pump/filter speed presets (low, medium, high)
+- Restore idle state (return all equipment to scheduled state)
+"""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -27,7 +34,7 @@ SPEED_NAMES: Final[Sequence[SpeedT]] = ["low", "medium", "high"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+    """Set up the button platform."""
 
     coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
 
@@ -58,24 +65,22 @@ T = TypeVar("T", EntityIndexFilter, EntityIndexPump)
 
 
 class OmniLogicSpeedPresetButtonEntity(OmniLogicEntity[T], ButtonEntity):
-    """An entity using CoordinatorEntity.
+    """Base class for pump/filter speed preset buttons.
 
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
+    Provides buttons to quickly set a pump or filter to a preconfigured
+    speed (low, medium, or high).
     """
 
     speed: SpeedT
-
     on_state: PumpState | FilterState
 
     def __init__(self, coordinator: OmniLogicCoordinator, context: int, speed: SpeedT) -> None:
-        # It is important that the speed and data members are assigned BEFORE we run the __init__ as they are used to
-        # determine the name of the button
-        self.speed: SpeedT = speed
+        """Initialize the speed preset button.
+
+        Note: Speed must be assigned before super().__init__() as it's used
+        to determine the button name.
+        """
+        self.speed = speed
         super().__init__(coordinator, context)
 
     @property
@@ -121,17 +126,10 @@ class OmniLogicFilterButtonEntity(OmniLogicSpeedPresetButtonEntity[EntityIndexFi
 
 
 class OmniLogicIdleButtonEntity(OmniLogicEntity[EntityIndexBackyard], ButtonEntity):
-    """An entity using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
-    """
+    """Button to restore all equipment to their scheduled idle state."""
 
     def __init__(self, coordinator: OmniLogicCoordinator, context: int) -> None:
+        """Initialize the restore idle button."""
         super().__init__(coordinator, context)
 
     @property

@@ -1,3 +1,11 @@
+"""Number platform for OmniLogic Local integration.
+
+This module provides number entities for:
+- Variable speed pump/filter speed control
+- Solar heater temperature setpoint
+- Chlorinator timed percent control
+"""
+
 from __future__ import annotations
 
 import logging
@@ -17,10 +25,11 @@ from pyomnilogic_local.omnitypes import (
 )
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
+from homeassistant.const import PERCENTAGE
 
 from .const import DOMAIN, KEY_COORDINATOR
 from .entity import OmniLogicEntity
+from .helpers.temperature import get_unit_from_system
 from .types.entity_index import EntityIndexBodyOfWater, EntityIndexChlorinator, EntityIndexFilter, EntityIndexHeater, EntityIndexPump
 from .utils import get_entities_of_hass_type, get_entities_of_omni_types
 
@@ -35,7 +44,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+    """Set up the number platform."""
 
     coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
 
@@ -107,20 +116,16 @@ T = TypeVar("T", EntityIndexPump, EntityIndexFilter)
 
 
 class OmniLogicVSPNumberEntity(OmniLogicEntity[T], NumberEntity):
-    """An entity using CoordinatorEntity.
+    """Base class for variable speed pump/filter speed control.
 
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-
+    This entity allows controlling the speed of variable speed pumps
+    and filters, with support for both RPM and percentage display modes.
     """
 
     _attr_icon: str = "mdi:gauge"
 
     def __init__(self, coordinator: OmniLogicCoordinator, context: int) -> None:
-        """Pass coordinator to CoordinatorEntity."""
+        """Initialize the VSP number entity."""
         super().__init__(coordinator, context)
 
     @property
@@ -192,10 +197,10 @@ class OmniLogicVSPNumberEntity(OmniLogicEntity[T], NumberEntity):
 
 
 class OmniLogicPumpNumberEntity(OmniLogicVSPNumberEntity[EntityIndexPump]):
-    """An entity representing a number platform for an OmniLogic Pump."""
+    """Speed control for a variable speed pump."""
 
     async def async_set_native_value(self, value: float) -> None:
-        """Update the current value."""
+        """Set the pump speed."""
         if self.native_unit_of_measurement == "RPM":
             new_speed_pct = round(value / self.native_max_value * 100)
         else:
@@ -207,10 +212,10 @@ class OmniLogicPumpNumberEntity(OmniLogicVSPNumberEntity[EntityIndexPump]):
 
 
 class OmniLogicFilterNumberEntity(OmniLogicVSPNumberEntity[EntityIndexFilter]):
-    """An OmniLogicFilterNumberEntity is a special case of an OmniLogicPumpNumberEntity."""
+    """Speed control for a variable speed filter pump."""
 
     async def async_set_native_value(self, value: float) -> None:
-        """Update the current value."""
+        """Set the filter pump speed."""
         if self.native_unit_of_measurement == "RPM":
             new_speed_pct = round(value / self.native_max_value * 100)
         else:
@@ -222,40 +227,51 @@ class OmniLogicFilterNumberEntity(OmniLogicVSPNumberEntity[EntityIndexFilter]):
 
 
 class OmniLogicSolarSetPointNumberEntity(OmniLogicEntity[EntityIndexHeater], NumberEntity):
-    """An OmniLogicFilterNumberEntity is a special case of an OmniLogicPumpNumberEntity."""
+    """Solar heater temperature setpoint control.
+
+    This entity allows setting the target temperature for solar heaters.
+    Unlike the main heater (which always uses Fahrenheit), the solar
+    setpoint respects the system's configured temperature unit.
+    """
 
     _attr_device_class = NumberDeviceClass.TEMPERATURE
     _attr_name = "Solar Set Point"
-    _attr_mode = "box"
+    _attr_mode = NumberMode.BOX
 
     @property
     def native_max_value(self) -> float:
+        """Return the maximum temperature setpoint."""
         return self.data.msp_config.max_temp
 
     @property
     def native_min_value(self) -> float:
+        """Return the minimum temperature setpoint."""
         return self.data.msp_config.min_temp
 
     @property
     def native_value(self) -> float | None:
+        """Return the current solar setpoint temperature."""
         return self.data.msp_config.solar_set_point
 
     @property
-    def native_unit_of_measurement(self) -> str | None:
-        return str(UnitOfTemperature.CELSIUS) if self.get_system_config().units == "Metric" else str(UnitOfTemperature.FAHRENHEIT)
+    def native_unit_of_measurement(self) -> str:
+        """Return the temperature unit based on system configuration."""
+        return get_unit_from_system(self.get_system_config())
 
     async def async_set_native_value(self, value: float) -> None:
+        """Set the solar heater target temperature."""
+        temperature = int(value)
         await self.coordinator.omni_api.async_set_solar_heater(
             self.bow_id,
             self.system_id,
-            int(value),
+            temperature,
             unit=self.native_unit_of_measurement,
         )
-        self.set_config({"solar_set_point": int(value)})
+        self.set_config({"solar_set_point": temperature})
 
 
 class OmniLogicChlorinatorTimedPercentNumberEntity(OmniLogicEntity[EntityIndexChlorinator], NumberEntity):
-    """An OmniLogicFilterNumberEntity is a special case of an OmniLogicPumpNumberEntity."""
+    """Chlorinator timed percent control for salt chlorinators in timed mode."""
 
     _attr_name = "Chlorinator Timed Percent"
     _attr_native_max_value = 100

@@ -1,3 +1,11 @@
+"""Binary sensor platform for OmniLogic Local integration.
+
+This module provides binary sensor entities for:
+- Service mode status (system in maintenance mode)
+- Heater equipment running status
+- Water flow detection
+"""
+
 from __future__ import annotations
 
 import logging
@@ -23,7 +31,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+    """Set up the binary sensor platform."""
 
     coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
     entities = []
@@ -86,6 +94,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class OmniLogicServiceModeBinarySensorEntity(OmniLogicEntity[EntityIndexBackyard], BinarySensorEntity):
+    """Binary sensor indicating if the system is in service/maintenance mode."""
+
     _attr_name = "Service Mode"
 
     @property

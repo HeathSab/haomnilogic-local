@@ -1,12 +1,16 @@
-"""Example integration using DataUpdateCoordinator."""
+"""Data update coordinator for OmniLogic Local integration.
+
+This module provides the central coordinator that fetches and manages
+data from the OmniLogic controller.
+"""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable
 from datetime import timedelta
 import logging
 
-import async_timeout
 from pyomnilogic_local.api import OmniLogicAPI
 from pyomnilogic_local.exceptions import OmniTimeoutException
 from pyomnilogic_local.models.mspconfig import MSPConfig, OmniBase
@@ -40,23 +44,31 @@ def device_walk(base: OmniBase) -> Iterable[OmniBase]:
                 yield from device_walk(device)
 
 
-class OmniLogicCoordinator(DataUpdateCoordinator):
-    """Hayward OmniLogic API coordinator."""
+class OmniLogicCoordinator(DataUpdateCoordinator[dict[int, EntityIndexData]]):
+    """Data update coordinator for Hayward OmniLogic pool controllers.
+
+    This coordinator fetches both MSP configuration and telemetry data
+    from the OmniLogic controller on each update cycle, then transforms
+    it into an entity index for quick lookup by system ID.
+    """
 
     msp_config_xml: str
     msp_config: MSPConfig
     telemetry_xml: str
     telemetry: Telemetry
-    data: dict[int, EntityIndexData]
 
     def __init__(self, hass: HomeAssistant, omni_api: OmniLogicAPI, scan_interval: int) -> None:
-        """Initialize my coordinator."""
+        """Initialize the OmniLogic coordinator.
+
+        Args:
+            hass: The Home Assistant instance.
+            omni_api: The OmniLogic API client.
+            scan_interval: Polling interval in seconds.
+        """
         super().__init__(
             hass,
             _LOGGER,
-            # Name of the data. For logging purposes.
             name="OmniLogic",
-            # Polling interval. Will only be polled if there are subscribers.
             update_interval=timedelta(seconds=scan_interval),
         )
         self.omni_api = omni_api
@@ -71,7 +83,7 @@ class OmniLogicCoordinator(DataUpdateCoordinator):
         try:
             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
-            async with async_timeout.timeout(30):
+            async with asyncio.timeout(30):
                 if SIMULATION:
                     _LOGGER.debug("Simulating Omni MSPConfig and Telemetry")
                     test_data = json.loads(TEST_DIAGNOSTIC_DATA.replace(r"\"", r"'"))
