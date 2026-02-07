@@ -9,13 +9,13 @@ from pyomnilogic_local.omnitypes import OmniType
 from homeassistant.components.water_heater import WaterHeaterEntity, WaterHeaterEntityFeature
 from homeassistant.const import ATTR_TEMPERATURE, STATE_OFF, STATE_ON, UnitOfTemperature
 
-from .const import DOMAIN, KEY_COORDINATOR
+from . import OmniLogicConfigEntry
+from .const import INVALID_TEMP_VALUES
 from .entity import OmniLogicEntity
 from .types.entity_index import EntityIndexHeater, EntityIndexHeaterEquip
 from .utils import get_entities_of_hass_type
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -24,10 +24,10 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up the water heater platform."""
 
-    coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
 
     all_heaters = get_entities_of_hass_type(coordinator.data, "water_heater")
 
@@ -79,8 +79,8 @@ class OmniLogicWaterHeaterEntity(OmniLogicEntity[EntityIndexHeater], WaterHeater
 
     @property
     def temperature_unit(self) -> str:
-        # Heaters always return their values in Fahrenheit, no matter what units the system is set to
-        # https://github.com/cryptk/haomnilogic-local/issues/96
+        if self.get_system_config().units == "Metric":
+            return UnitOfTemperature.CELSIUS
         return UnitOfTemperature.FAHRENHEIT
 
     @property
@@ -97,21 +97,25 @@ class OmniLogicWaterHeaterEntity(OmniLogicEntity[EntityIndexHeater], WaterHeater
 
     @property
     def current_temperature(self) -> float | None:
-        current_temp = cast(TelemetryBoW, self.get_telemetry_by_systemid(self.bow_id)).water_temp
-        return current_temp if current_temp != -1 else None
+        bow_telemetry = self.get_telemetry_by_systemid(self.bow_id)
+        if bow_telemetry is None:
+            return None
+        current_temp = cast(TelemetryBoW, bow_telemetry).water_temp
+        return current_temp if current_temp not in INVALID_TEMP_VALUES else None
 
     @property
     def current_operation(self) -> str:
         return str(STATE_ON) if self.data.telemetry.enabled else str(STATE_OFF)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
+        temp = round(kwargs[ATTR_TEMPERATURE])
         await self.coordinator.omni_api.async_set_heater(
             self.bow_id,
             self.system_id,
-            int(kwargs[ATTR_TEMPERATURE]),
+            temp,
             unit=self.temperature_unit,
         )
-        self.set_telemetry({"current_set_point": int(kwargs[ATTR_TEMPERATURE])})
+        self.set_telemetry({"current_set_point": temp})
 
     async def async_set_operation_mode(self, operation_mode: Literal["on", "off"]) -> None:
         match operation_mode:

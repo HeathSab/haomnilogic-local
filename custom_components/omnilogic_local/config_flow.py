@@ -11,7 +11,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS, CONF_NAME, CONF_PORT, CONF_SCAN_INTERVAL, CONF_TIMEOUT
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.exceptions import HomeAssistantError
 import homeassistant.helpers.config_validation as cv
 
@@ -50,17 +50,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
-            user_input.update({"name": self.config_entry.data[CONF_NAME]})
-            # write updated config entries
+            user_input[CONF_NAME] = self.config_entry.data[CONF_NAME]
             self.hass.config_entries.async_update_entry(self.config_entry, data=user_input)
-            # # reload updated config entries
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            self.async_abort(reason="configuration updated")
-
-            return self.async_create_entry(data=user_input)
+            return self.async_abort(reason="configuration updated")
 
         return self.async_show_form(
             step_id="init",
@@ -70,8 +66,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(CONF_PORT, default=self.config_entry.data[CONF_PORT]): cv.port,
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
-                        description="bar",
-                        msg="foo",
                         default=self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     ): vol.All(cv.positive_int, vol.Clamp(min=MIN_SCAN_INTERVAL)),
                     vol.Required(CONF_TIMEOUT, default=self.config_entry.data[CONF_TIMEOUT]): vol.All(
@@ -87,7 +81,7 @@ class OmnilogicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
 
     VERSION = 2
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -134,4 +128,4 @@ class CannotConnect(HomeAssistantError):
 
 
 class OmniLogicTimeout(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
+    """Error to indicate a connection timeout."""

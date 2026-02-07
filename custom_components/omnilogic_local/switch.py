@@ -18,7 +18,7 @@ from pyomnilogic_local.omnitypes import (
 
 from homeassistant.components.switch import SwitchEntity
 
-from .const import DOMAIN, KEY_COORDINATOR
+from . import OmniLogicConfigEntry
 from .entity import OmniLogicEntity
 from .types.entity_index import (
     EntityIndexBodyOfWater,
@@ -31,7 +31,6 @@ from .types.entity_index import (
 from .utils import get_entities_of_hass_type, get_entities_of_omni_types
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -41,11 +40,11 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up the switch platform."""
 
     entities = []
-    coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
     all_switches = get_entities_of_hass_type(coordinator.data, "switch")
 
     for system_id, switch in all_switches.items():
@@ -331,11 +330,15 @@ class OmniLogicSpilloverSwitchEntity(OmniLogicEntity[EntityIndexBodyOfWater], Sw
 
     @property
     def is_on(self) -> bool | None:
-        return cast(TelemetryFilter, self.get_telemetry_by_systemid(self.filter_system_id)).valve_position == FilterValvePosition.SPILLOVER
+        filter_telemetry = self.get_telemetry_by_systemid(self.filter_system_id)
+        if filter_telemetry is None:
+            return None
+        return cast(TelemetryFilter, filter_telemetry).valve_position == FilterValvePosition.SPILLOVER
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
         _LOGGER.debug("turning on spillover ID: %s", self.system_id)
+        # TODO: Spillover speed is hardcoded; consider making configurable via NumberEntity
         await self.coordinator.omni_api.async_set_spillover(self.bow_id, 75)
 
     async def async_turn_off(self, **kwargs: Any) -> None:

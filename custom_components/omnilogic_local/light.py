@@ -11,11 +11,10 @@ from homeassistant.exceptions import HomeAssistantError
 from .types.entity_index import EntityIndexColorLogicLight
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, KEY_COORDINATOR
+from . import OmniLogicConfigEntry
 from .entity import OmniLogicEntity
 from .utils import get_entities_of_hass_type
 
@@ -30,13 +29,13 @@ def to_omni_level(level: int) -> int:
 
 def to_hass_level(level: ColorLogicBrightness) -> int:
     """Convert the given OmniLogic (0-4) light level to Home Assistant (0-255)."""
-    return int(int(level.value * 255) // 4)
+    return int(round(level.value * 255 / 4))
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up the light platform."""
 
-    coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
 
     all_lights = get_entities_of_hass_type(coordinator.data, "light")
 

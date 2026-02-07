@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
-from typing import cast
 
 from pyomnilogic_local.api import OmniLogicAPI
 from pyomnilogic_local.omnitypes import OmniType
@@ -14,9 +14,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
-from .const import BACKYARD_SYSTEM_ID, DEFAULT_SCAN_INTERVAL, DOMAIN, KEY_COORDINATOR
+from .const import BACKYARD_SYSTEM_ID, DEFAULT_SCAN_INTERVAL
 from .coordinator import OmniLogicCoordinator
 from .utils import get_entities_of_omni_types
+
+
+@dataclass
+class OmniLogicRuntimeData:
+    """Runtime data for OmniLogic Local."""
+
+    coordinator: OmniLogicCoordinator
+
+
+type OmniLogicConfigEntry = ConfigEntry[OmniLogicRuntimeData]
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -31,7 +41,7 @@ PLATFORMS: list[Platform] = [
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry) -> bool:
     """Set up OmniLogic Local from a config entry."""
 
     # Create an API instance
@@ -71,24 +81,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             name=f"{entry.data[CONF_NAME]} {bow.msp_config.name}",
         )
 
-    # Store them for use later
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        KEY_COORDINATOR: coordinator,
-    }
+    entry.runtime_data = OmniLogicRuntimeData(coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry) -> bool:
     """Unload a config entry."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
-    # I think it is a bug that the await for async_unload_platforms above has a signature that indicates it returns a bool, yet unload_ok
-    # is detected as "Any" by mypy
-    return cast(bool, unload_ok)
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

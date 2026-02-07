@@ -8,24 +8,25 @@ from pyomnilogic_local.omnitypes import BackyardState, CSADType, HeaterState, Om
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 
-from .const import BACKYARD_SYSTEM_ID, DOMAIN, KEY_COORDINATOR
+from .const import BACKYARD_SYSTEM_ID
 from .entity import OmniLogicEntity
 from .types.entity_index import EntityIndexBackyard, EntityIndexHeaterEquip, EntityIndexSensor
 from .utils import get_entities_of_hass_type, get_entities_of_omni_types
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from . import OmniLogicConfigEntry
 
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the binary sensor platform."""
 
-    coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
     entities = []
 
     # Create a binary sensor entity indicating if we are in Service Mode
@@ -101,7 +102,7 @@ class OmniLogicServiceModeBinarySensorEntity(OmniLogicEntity[EntityIndexBackyard
 class OmniLogicHeaterEquipBinarySensorEntity(OmniLogicEntity[EntityIndexHeaterEquip], BinarySensorEntity):
     """Expose a binary state via a sensor based on telemetry data."""
 
-    device_class = BinarySensorDeviceClass.HEAT
+    _attr_device_class = BinarySensorDeviceClass.HEAT
 
     @property
     def icon(self) -> str | None:
@@ -128,6 +129,8 @@ class OmniLogicFlowBinarySensorEntity(OmniLogicEntity[EntityIndexSensor], Binary
         return f"{self.data.msp_config.name} Status"
 
     @property
-    def is_on(self) -> bool:
-        my_bow_telem = cast(TelemetryBoW, self.get_telemetry_by_systemid(self.data.msp_config.bow_id))
-        return my_bow_telem.flow == 1
+    def is_on(self) -> bool | None:
+        bow_telemetry = self.get_telemetry_by_systemid(self.data.msp_config.bow_id)
+        if bow_telemetry is None:
+            return None
+        return cast(TelemetryBoW, bow_telemetry).flow == 1

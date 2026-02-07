@@ -8,16 +8,16 @@ from pyomnilogic_local.omnitypes import FilterState, FilterType, OmniType, PumpS
 
 from homeassistant.components.button import ButtonEntity
 
-from .const import BACKYARD_SYSTEM_ID, DOMAIN, KEY_COORDINATOR
+from .const import BACKYARD_SYSTEM_ID
 from .entity import OmniLogicEntity
 from .types.entity_index import EntityIndexBackyard, EntityIndexFilter, EntityIndexPump
 from .utils import get_entities_of_omni_types
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+    from . import OmniLogicConfigEntry
     from .coordinator import OmniLogicCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,10 +26,10 @@ SpeedT = Literal["low", "medium", "high"]
 SPEED_NAMES: Final[Sequence[SpeedT]] = ["low", "medium", "high"]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the button platform."""
 
-    coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
 
     all_pumps = get_entities_of_omni_types(coordinator.data, [OmniType.FILTER, OmniType.PUMP])
 

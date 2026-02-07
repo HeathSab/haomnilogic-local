@@ -32,13 +32,11 @@ class OmniLogicEntity(CoordinatorEntity, Generic[EntityIndexTypeVar]):
         self,
         coordinator: OmniLogicCoordinator,
         context: int,
-        extra_attributes: dict[str, str] | None = None,  # Extra attributes dictionary
     ) -> None:
         super().__init__(coordinator=coordinator, context=context)
         self.data = cast(EntityIndexTypeVar, coordinator.data[context])
         self.bow_id = coordinator.data[context].msp_config.bow_id
         self.system_id = context
-        self._extra_attributes = extra_attributes
 
     @callback  # type: ignore[misc]
     def _handle_coordinator_update(self) -> None:
@@ -90,6 +88,8 @@ class OmniLogicEntity(CoordinatorEntity, Generic[EntityIndexTypeVar]):
 
     @property
     def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
         return cast(TelemetryBackyard, self.coordinator.data[BACKYARD_SYSTEM_ID].telemetry).state is BackyardState.ON
 
     @property
@@ -113,7 +113,7 @@ class OmniLogicEntity(CoordinatorEntity, Generic[EntityIndexTypeVar]):
         }
 
     @property
-    def name(self) -> Any:
+    def name(self) -> str | None:
         return self._attr_name if hasattr(self, "_attr_name") else self.data.msp_config.name
 
     @property

@@ -1,12 +1,12 @@
-"""Example integration using DataUpdateCoordinator."""
+"""DataUpdateCoordinator for OmniLogic Local."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable
 from datetime import timedelta
 import logging
 
-import async_timeout
 from pyomnilogic_local.api import OmniLogicAPI
 from pyomnilogic_local.exceptions import OmniTimeoutException
 from pyomnilogic_local.models.mspconfig import MSPConfig, OmniBase
@@ -16,15 +16,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .types.entity_index import EntityIndexData
-
-# Import diagnostic data to reproduce issues
-SIMULATION = False
-if SIMULATION:
-    import json
-
-    # This line is only used during development when simulating a pool with diagnostic data
-    # Disable the pylint and mypy alerts that don't like it when this variable isn't defined
-    from .test_diagnostic_data import TEST_DIAGNOSTIC_DATA  # type: ignore # pylint: disable=no-name-in-module
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,30 +62,21 @@ class OmniLogicCoordinator(DataUpdateCoordinator):
         try:
             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
-            async with async_timeout.timeout(30):
-                if SIMULATION:
-                    _LOGGER.debug("Simulating Omni MSPConfig and Telemetry")
-                    test_data = json.loads(TEST_DIAGNOSTIC_DATA.replace(r"\"", r"'"))
-                    self.msp_config_xml = test_data["data"]["msp_config"]
-                    self.msp_config = MSPConfig.load_xml(self.msp_config_xml)
-                    self.telemetry_xml = test_data["data"]["telemetry"]
-                    self.telemetry = Telemetry.load_xml(self.telemetry_xml)
+            async with asyncio.timeout(30):
+                # Initially we only pulled the msp_config at integration startup as it rarely changes
+                # Then we learned that heater set points (which can change often enough) are stored
+                # within the MSP Config, not the telemetry, so now we pull the msp_config on every update
+                _LOGGER.debug("Fetching OmniLogic MSPConfig")
+                # we postprocess the XML to convert hyphens to underscores to simplify typing with TypedDict later
+                # and attempt to convert values to int to make equality comparisons easier without having to constantly int() everything
+                self.msp_config_xml = await self.omni_api.async_get_config(raw=True)
+                self.msp_config = MSPConfig.load_xml(self.msp_config_xml)
 
-                else:
-                    # Initially we only pulled the msp_config at integration startup as it rarely changes
-                    # Then we learned that heater set points (which can change often enough) are stored
-                    # within the MSP Config, not the telemetry, so now we pull the msp_config on every update
-                    _LOGGER.debug("Fetching OmniLogic MSPConfig")
-                    # we postprocess the XML to convert hyphens to underscores to simplify typing with TypedDict later
-                    # and attempt to convert values to int to make equality comparisons easier without having to constantly int() everything
-                    self.msp_config_xml = await self.omni_api.async_get_config(raw=True)
-                    self.msp_config = MSPConfig.load_xml(self.msp_config_xml)
-
-                    _LOGGER.debug("Fetching OmniLogic Telemetry")
-                    # We postprocess the XML to convert hyphens to underscores to simplify typing with TypedDict later
-                    # and attempt to convert values to int to make equality comparisons easier without having to constantly int() everything
-                    self.telemetry_xml = await self.omni_api.async_get_telemetry(raw=True)
-                    self.telemetry = Telemetry.load_xml(self.telemetry_xml)
+                _LOGGER.debug("Fetching OmniLogic Telemetry")
+                # We postprocess the XML to convert hyphens to underscores to simplify typing with TypedDict later
+                # and attempt to convert values to int to make equality comparisons easier without having to constantly int() everything
+                self.telemetry_xml = await self.omni_api.async_get_telemetry(raw=True)
+                self.telemetry = Telemetry.load_xml(self.telemetry_xml)
 
                 entity_index: dict[int, EntityIndexData] = {}
                 for device in device_walk(self.msp_config):

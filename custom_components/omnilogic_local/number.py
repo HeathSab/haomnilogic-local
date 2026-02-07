@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from math import floor
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from pyomnilogic_local.omnitypes import (
     BodyOfWaterType,
@@ -19,13 +19,12 @@ from pyomnilogic_local.omnitypes import (
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
 
-from .const import DOMAIN, KEY_COORDINATOR
+from . import OmniLogicConfigEntry
 from .entity import OmniLogicEntity
 from .types.entity_index import EntityIndexBodyOfWater, EntityIndexChlorinator, EntityIndexFilter, EntityIndexHeater, EntityIndexPump
 from .utils import get_entities_of_hass_type, get_entities_of_omni_types
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -34,10 +33,10 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the number platform."""
 
-    coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
 
     filters_and_pumps = get_entities_of_omni_types(coordinator.data, [OmniType.FILTER, OmniType.PUMP])
 
@@ -124,7 +123,7 @@ class OmniLogicVSPNumberEntity(OmniLogicEntity[T], NumberEntity):
         super().__init__(coordinator, context)
 
     @property
-    def name(self) -> Any:
+    def name(self) -> str:
         return f"{super().name} Speed"
 
     @property
@@ -226,7 +225,7 @@ class OmniLogicSolarSetPointNumberEntity(OmniLogicEntity[EntityIndexHeater], Num
 
     _attr_device_class = NumberDeviceClass.TEMPERATURE
     _attr_name = "Solar Set Point"
-    _attr_mode = "box"
+    _attr_mode = NumberMode.BOX
 
     @property
     def native_max_value(self) -> float:
@@ -242,7 +241,9 @@ class OmniLogicSolarSetPointNumberEntity(OmniLogicEntity[EntityIndexHeater], Num
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        return str(UnitOfTemperature.CELSIUS) if self.get_system_config().units == "Metric" else str(UnitOfTemperature.FAHRENHEIT)
+        if self.get_system_config().units == "Metric":
+            return UnitOfTemperature.CELSIUS
+        return UnitOfTemperature.FAHRENHEIT
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.omni_api.async_set_solar_heater(

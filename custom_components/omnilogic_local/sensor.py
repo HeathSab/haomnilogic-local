@@ -11,7 +11,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION, UnitOfPower, UnitOfTemperature
 from homeassistant.helpers.typing import StateType
 
-from .const import BACKYARD_SYSTEM_ID, DOMAIN, KEY_COORDINATOR
+from .const import BACKYARD_SYSTEM_ID, INVALID_TEMP_VALUES
 from .entity import OmniLogicEntity
 from .types.entity_index import (
     EntityIndexBackyard,
@@ -25,19 +25,19 @@ from .types.entity_index import (
 from .utils import get_entities_of_hass_type, get_entities_of_omni_types
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+    from . import OmniLogicConfigEntry
     from .coordinator import OmniLogicCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up the switch platform."""
+async def async_setup_entry(hass: HomeAssistant, entry: OmniLogicConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the sensor platform."""
 
-    coordinator = hass.data[DOMAIN][entry.entry_id][KEY_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
 
     # Create a sensor entity for all temperature sensors
     all_sensors = get_entities_of_hass_type(coordinator.data, "sensor")
@@ -158,6 +158,7 @@ class OmniLogicTemperatureSensorEntity(OmniLogicEntity[EntityIndexSensor], Senso
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
     _sensed_system_id: int | None = None
 
     def __init__(self, coordinator: OmniLogicCoordinator, context: int, sensed_type: OmniType) -> None:
@@ -198,7 +199,7 @@ class OmniLogicAirTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[Entit
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
         temp = self.sensed_data.telemetry.air_temp
-        return temp if temp not in [-1, 255, 65535] else None
+        return temp if temp not in INVALID_TEMP_VALUES else None
 
 
 class OmniLogicWaterTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[EntityIndexBodyOfWater]):
@@ -209,7 +210,7 @@ class OmniLogicWaterTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[Ent
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
         temp = self.sensed_data.telemetry.water_temp
-        return temp if temp not in [-1, 255, 65535] else None
+        return temp if temp not in INVALID_TEMP_VALUES else None
 
 
 class OmniLogicSolarTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[EntityIndexHeaterEquip]):
@@ -220,7 +221,7 @@ class OmniLogicSolarTemperatureSensorEntity(OmniLogicTemperatureSensorEntity[Ent
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
         temp = self.sensed_data.telemetry.temp
-        return temp if temp not in [-1, 255, 65535] else None
+        return temp if temp not in INVALID_TEMP_VALUES else None
 
 
 class OmniLogicFilterEnergySensorEntity(OmniLogicEntity[EntityIndexFilter], SensorEntity):
@@ -297,6 +298,7 @@ class OmniLogicCSADAcidPhEntity(OmniLogicEntity[EntityIndexCSAD], SensorEntity):
 
 class OmniLogicCSADAcidORPEntity(OmniLogicEntity[EntityIndexCSAD], SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "mV"
     _attr_name = "ORP"
 
     def __init__(self, coordinator: OmniLogicCoordinator, context: int) -> None:
