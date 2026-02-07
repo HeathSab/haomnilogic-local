@@ -8,6 +8,7 @@ from pyomnilogic_local.omnitypes import OmniType
 
 from homeassistant.components.water_heater import WaterHeaterEntity, WaterHeaterEntityFeature
 from homeassistant.const import ATTR_TEMPERATURE, STATE_OFF, STATE_ON, UnitOfTemperature
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 from . import OmniLogicConfigEntry
 from .const import INVALID_TEMP_VALUES
@@ -78,22 +79,37 @@ class OmniLogicWaterHeaterEntity(OmniLogicEntity[EntityIndexHeater], WaterHeater
         self.heater_equipment_ids = heater_equipment_ids
 
     @property
+    def _is_metric(self) -> bool:
+        return self.get_system_config().units == "Metric"
+
+    def _f_to_native(self, value: float) -> float:
+        """Convert a Fahrenheit value to the native unit (°C if Metric, °F if Standard)."""
+        if self._is_metric:
+            return round(TemperatureConverter.convert(value, UnitOfTemperature.FAHRENHEIT, UnitOfTemperature.CELSIUS))
+        return value
+
+    @property
     def temperature_unit(self) -> str:
-        # Heaters always return their values in Fahrenheit, no matter what units the system is set to
-        # https://github.com/cryptk/haomnilogic-local/issues/96
+        # Heaters always report in Fahrenheit from the hardware.
+        # We convert to °C ourselves when the system is Metric so that
+        # HA's UI steps in clean 1°C increments instead of fractional °F-based values.
+        if self._is_metric:
+            return UnitOfTemperature.CELSIUS
         return UnitOfTemperature.FAHRENHEIT
 
     @property
     def min_temp(self) -> float:
-        return self.data.msp_config.min_temp
+        return self._f_to_native(self.data.msp_config.min_temp)
 
     @property
     def max_temp(self) -> float:
-        return self.data.msp_config.max_temp
+        return self._f_to_native(self.data.msp_config.max_temp)
 
     @property
     def target_temperature(self) -> float | None:
-        return self.data.telemetry.current_set_point
+        if self.data.telemetry.current_set_point is None:
+            return None
+        return self._f_to_native(self.data.telemetry.current_set_point)
 
     @property
     def current_temperature(self) -> float | None:
@@ -101,21 +117,29 @@ class OmniLogicWaterHeaterEntity(OmniLogicEntity[EntityIndexHeater], WaterHeater
         if bow_telemetry is None:
             return None
         current_temp = cast(TelemetryBoW, bow_telemetry).water_temp
-        return current_temp if current_temp not in INVALID_TEMP_VALUES else None
+        if current_temp in INVALID_TEMP_VALUES:
+            return None
+        return self._f_to_native(current_temp)
 
     @property
     def current_operation(self) -> str:
         return str(STATE_ON) if self.data.telemetry.enabled else str(STATE_OFF)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        temp = round(kwargs[ATTR_TEMPERATURE])
+        temp = kwargs[ATTR_TEMPERATURE]
+        # Convert to °F for the hardware if the user is working in °C
+        if self._is_metric:
+            temp_f = round(TemperatureConverter.convert(temp, UnitOfTemperature.CELSIUS, UnitOfTemperature.FAHRENHEIT))
+        else:
+            temp_f = round(temp)
         await self.coordinator.omni_api.async_set_heater(
             self.bow_id,
             self.system_id,
-            temp,
-            unit=self.temperature_unit,
+            temp_f,
+            unit=UnitOfTemperature.FAHRENHEIT,
         )
-        self.set_telemetry({"current_set_point": temp})
+        # Store the °F value in telemetry since that's what the hardware uses
+        self.set_telemetry({"current_set_point": temp_f})
 
     async def async_set_operation_mode(self, operation_mode: Literal["on", "off"]) -> None:
         match operation_mode:

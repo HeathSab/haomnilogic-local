@@ -18,6 +18,7 @@ from pyomnilogic_local.omnitypes import (
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 from . import OmniLogicConfigEntry
 from .entity import OmniLogicEntity
@@ -228,31 +229,52 @@ class OmniLogicSolarSetPointNumberEntity(OmniLogicEntity[EntityIndexHeater], Num
     _attr_mode = NumberMode.BOX
 
     @property
+    def _is_metric(self) -> bool:
+        return self.get_system_config().units == "Metric"
+
+    def _f_to_native(self, value: float) -> float:
+        """Convert a Fahrenheit value to the native unit (°C if Metric, °F if Standard)."""
+        if self._is_metric:
+            return round(TemperatureConverter.convert(value, UnitOfTemperature.FAHRENHEIT, UnitOfTemperature.CELSIUS))
+        return value
+
+    @property
     def native_max_value(self) -> float:
-        return self.data.msp_config.max_temp
+        return self._f_to_native(self.data.msp_config.max_temp)
 
     @property
     def native_min_value(self) -> float:
-        return self.data.msp_config.min_temp
+        return self._f_to_native(self.data.msp_config.min_temp)
 
     @property
     def native_value(self) -> float | None:
-        return self.data.msp_config.solar_set_point
+        if self.data.msp_config.solar_set_point is None:
+            return None
+        return self._f_to_native(self.data.msp_config.solar_set_point)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        # Heaters always return their values in Fahrenheit, no matter what units the system is set to
-        # https://github.com/cryptk/haomnilogic-local/issues/96
+        # Heaters always report in Fahrenheit from the hardware.
+        # We convert to °C ourselves when the system is Metric so that
+        # HA's UI steps in clean 1°C increments instead of fractional °F-based values.
+        if self._is_metric:
+            return UnitOfTemperature.CELSIUS
         return UnitOfTemperature.FAHRENHEIT
 
     async def async_set_native_value(self, value: float) -> None:
+        # Convert to °F for the hardware if the user is working in °C
+        if self._is_metric:
+            value_f = round(TemperatureConverter.convert(value, UnitOfTemperature.CELSIUS, UnitOfTemperature.FAHRENHEIT))
+        else:
+            value_f = round(value)
         await self.coordinator.omni_api.async_set_solar_heater(
             self.bow_id,
             self.system_id,
-            int(value),
-            unit=self.native_unit_of_measurement,
+            value_f,
+            unit=UnitOfTemperature.FAHRENHEIT,
         )
-        self.set_config({"solar_set_point": int(value)})
+        # Store the °F value in config since that's what the hardware uses
+        self.set_config({"solar_set_point": value_f})
 
 
 class OmniLogicChlorinatorTimedPercentNumberEntity(OmniLogicEntity[EntityIndexChlorinator], NumberEntity):
