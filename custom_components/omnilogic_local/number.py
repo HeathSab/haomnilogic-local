@@ -241,8 +241,8 @@ class OmniLogicSolarSetPointNumberEntity(OmniLogicEntity[EntityIndexHeater], Num
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        if self.get_system_config().units == "Metric":
-            return UnitOfTemperature.CELSIUS
+        # Heaters always return their values in Fahrenheit, no matter what units the system is set to
+        # https://github.com/cryptk/haomnilogic-local/issues/96
         return UnitOfTemperature.FAHRENHEIT
 
     async def async_set_native_value(self, value: float) -> None:
